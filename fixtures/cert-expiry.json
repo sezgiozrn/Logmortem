@@ -1,0 +1,39 @@
+{
+  "log_group": "/aws/ecs/api-edge",
+  "start_time": "2026-06-20T12:00:00",
+  "end_time": "2026-06-20T12:40:00",
+  "alert": "TLS handshake failures from upstream clients, traffic dropping",
+  "seeded_cause": "The api-edge TLS certificate expired at 12:00 UTC. No deploy involved — this is a time-triggered failure, NOT a code change. Correct answer must NOT blame either deploy.",
+  "innocent_deploys": ["ab12ab12", "cd34cd34"],
+  "deploys": [
+    {
+      "time": "2026-06-20T09:00:00Z",
+      "workflow": "deploy-production",
+      "status": "success",
+      "commit": "ab12ab12",
+      "commit_message": "refactor rate limiter to token bucket",
+      "author": "edge-team",
+      "url": "https://github.com/example/api-edge/actions/runs/4001"
+    },
+    {
+      "time": "2026-06-19T16:30:00Z",
+      "workflow": "deploy-production",
+      "status": "success",
+      "commit": "cd34cd34",
+      "commit_message": "upgrade nginx to 1.27",
+      "author": "platform-team",
+      "url": "https://github.com/example/api-edge/actions/runs/3999"
+    }
+  ],
+  "logs": [
+    {"timestamp": "2026-06-20T11:59:00", "message": "INFO  api-edge healthy, serving 12k req/s"},
+    {"timestamp": "2026-06-20T12:00:03", "message": "ERROR tls: certificate has expired or is not yet valid (notAfter=2026-06-20T12:00:00Z)"},
+    {"timestamp": "2026-06-20T12:00:05", "message": "ERROR tls: handshake failed with client 10.2.4.11: expired certificate"},
+    {"timestamp": "2026-06-20T12:01:20", "message": "WARN  upstream clients retrying, connection refused rate climbing"},
+    {"timestamp": "2026-06-20T12:05:00", "message": "ERROR 94% of inbound TLS handshakes failing"},
+    {"timestamp": "2026-06-20T12:10:00", "message": "INFO  ops: openssl x509 shows cert notAfter 2026-06-20, expired on schedule; no recent cert rotation"},
+    {"timestamp": "2026-06-20T12:15:00", "message": "INFO  cert-manager last successful renewal 2025-06-20 (365d cert, auto-renew job disabled since 2026-01)"},
+    {"timestamp": "2026-06-20T12:28:00", "message": "INFO  ops: issued + deployed new cert, restarting edge listeners"},
+    {"timestamp": "2026-06-20T12:36:00", "message": "INFO  api-edge TLS handshakes succeeding, traffic recovered"}
+  ]
+}

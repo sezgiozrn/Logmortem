@@ -1,0 +1,40 @@
+{
+  "log_group": "/aws/ecs/image-resizer",
+  "start_time": "2026-05-14T09:15:00",
+  "end_time": "2026-05-14T09:50:00",
+  "alert": "ECS tasks repeatedly OOMKilled, service flapping",
+  "seeded_cause": "Memory limit unchanged (512Mi) while a deploy enabled full-resolution image processing, blowing past the container limit. Introduced by commit bb11cc22.",
+  "innocent_deploys": ["dd33ee44"],
+  "deploys": [
+    {
+      "time": "2026-05-14T08:40:00Z",
+      "workflow": "deploy-production",
+      "status": "success",
+      "commit": "bb11cc22",
+      "commit_message": "enable full-resolution image processing pipeline",
+      "author": "media-team",
+      "url": "https://github.com/example/image-resizer/actions/runs/2001"
+    },
+    {
+      "time": "2026-05-13T22:10:00Z",
+      "workflow": "deploy-production",
+      "status": "success",
+      "commit": "dd33ee44",
+      "commit_message": "bump base image to alpine 3.20",
+      "author": "platform-team",
+      "url": "https://github.com/example/image-resizer/actions/runs/1999"
+    }
+  ],
+  "logs": [
+    {"timestamp": "2026-05-14T09:14:00", "message": "INFO  resizer worker booted, memory limit 512Mi"},
+    {"timestamp": "2026-05-14T09:16:22", "message": "INFO  processing job=44a1 mode=full-res dimensions=8000x6000"},
+    {"timestamp": "2026-05-14T09:16:41", "message": "WARN  memory usage 478Mi / 512Mi (93%)"},
+    {"timestamp": "2026-05-14T09:16:58", "message": "ERROR container OOMKilled (exit 137), restarting task"},
+    {"timestamp": "2026-05-14T09:18:12", "message": "INFO  processing job=44b7 mode=full-res dimensions=7200x5400"},
+    {"timestamp": "2026-05-14T09:18:33", "message": "ERROR container OOMKilled (exit 137), restarting task"},
+    {"timestamp": "2026-05-14T09:20:05", "message": "WARN  task restart count=6 in 4 minutes"},
+    {"timestamp": "2026-05-14T09:25:00", "message": "FATAL crash loop detected; service marked unhealthy"},
+    {"timestamp": "2026-05-14T09:40:00", "message": "INFO  ops: raised task memory limit 512Mi -> 2Gi"},
+    {"timestamp": "2026-05-14T09:48:00", "message": "INFO  resizer stable, no OOM in 8 minutes"}
+  ]
+}

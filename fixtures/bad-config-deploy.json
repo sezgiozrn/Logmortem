@@ -1,0 +1,39 @@
+{
+  "log_group": "/aws/ecs/auth-gateway",
+  "start_time": "2026-06-02T00:05:00",
+  "end_time": "2026-06-02T00:35:00",
+  "alert": "5xx spike on auth-gateway, login failing platform-wide",
+  "seeded_cause": "A deploy shipped a config change pointing REDIS_URL at a decommissioned host; session lookups failed. Introduced by commit 99aa88bb.",
+  "innocent_deploys": ["77cc66dd"],
+  "deploys": [
+    {
+      "time": "2026-06-01T23:50:00Z",
+      "workflow": "deploy-production",
+      "status": "success",
+      "commit": "99aa88bb",
+      "commit_message": "move redis config to new secrets manager path",
+      "author": "auth-team",
+      "url": "https://github.com/example/auth-gateway/actions/runs/3001"
+    },
+    {
+      "time": "2026-06-01T18:20:00Z",
+      "workflow": "deploy-production",
+      "status": "success",
+      "commit": "77cc66dd",
+      "commit_message": "add request-id header to access logs",
+      "author": "obs-team",
+      "url": "https://github.com/example/auth-gateway/actions/runs/2998"
+    }
+  ],
+  "logs": [
+    {"timestamp": "2026-06-02T00:04:00", "message": "INFO  auth-gateway started, config loaded"},
+    {"timestamp": "2026-06-02T00:06:11", "message": "ERROR redis: dial tcp redis-old.internal:6379 connect: no route to host"},
+    {"timestamp": "2026-06-02T00:06:12", "message": "ERROR session: lookup failed, cache unavailable"},
+    {"timestamp": "2026-06-02T00:06:30", "message": "ERROR handler: 503 POST /login — session store unreachable"},
+    {"timestamp": "2026-06-02T00:08:45", "message": "WARN  circuit breaker OPEN for redis after 50 consecutive failures"},
+    {"timestamp": "2026-06-02T00:12:00", "message": "ERROR 5xx rate 88% across all auth endpoints"},
+    {"timestamp": "2026-06-02T00:20:00", "message": "INFO  ops: diffed config vs previous release, REDIS_URL changed to redis-old.internal"},
+    {"timestamp": "2026-06-02T00:25:00", "message": "INFO  ops: rolled back to 77cc66dd, REDIS_URL restored to redis-prod.internal"},
+    {"timestamp": "2026-06-02T00:31:00", "message": "INFO  auth-gateway 5xx rate back to baseline <0.1%"}
+  ]
+}
