@@ -12,3 +12,5 @@ build/
 htmlcov/
 rca_*.md
 .venv/
+__pycache__/
+*.pyc
