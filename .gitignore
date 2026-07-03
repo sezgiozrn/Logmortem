@@ -11,3 +11,4 @@ build/
 .coverage
 htmlcov/
 rca_*.md
+.venv/

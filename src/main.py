@@ -9,6 +9,9 @@ import argparse
 import sys
 from datetime import datetime
 from src.collector import collect_logs, collect_deploys, build_context
+from src.sources import (
+    load_fixture, logs_from_fixture, deploys_from_fixture, times_from_fixture
+)
 from src.generator import generate_rca
 from src.formatter import format_markdown, print_summary
 
@@ -20,28 +23,35 @@ def parse_args():
     )
     parser.add_argument(
         "--log-group",
-        required=True,
+        required=False,
         help="CloudWatch log group name (e.g. /aws/ecs/my-service)"
     )
     parser.add_argument(
         "--start-time",
-        required=True,
+        required=False,
         help="Incident start time in ISO 8601 format (e.g. 2026-04-08T02:00:00)"
     )
     parser.add_argument(
         "--end-time",
-        required=True,
+        required=False,
         help="Incident end time in ISO 8601 format (e.g. 2026-04-08T03:00:00)"
     )
     parser.add_argument(
         "--alert",
-        required=True,
+        required=False,
         help="Alert description that triggered the incident"
     )
     parser.add_argument(
         "--repo",
         required=False,
-        help="GitHub repo in owner/repo format for deploy history (e.g. Sage-Canty/my-app)"
+        help="GitHub repo in owner/repo format for deploy history (e.g. your-org/your-app)"
+    )
+    parser.add_argument(
+        "--from-fixture",
+        required=False,
+        default=None,
+        help="Load logs/deploys/alert from a JSON fixture instead of live AWS/GitHub "
+             "(offline mode — used by the eval harness and for demos without creds)"
     )
     parser.add_argument(
         "--output",
@@ -62,35 +72,55 @@ def main():
 
     print("\n🔍 postmortem-pilot starting...\n")
 
-    # Parse timestamps
-    try:
-        start_time = datetime.fromisoformat(args.start_time)
-        end_time = datetime.fromisoformat(args.end_time)
-    except ValueError as e:
-        print(f"❌ Invalid timestamp format: {e}")
-        print("   Use ISO 8601 format: 2026-04-08T02:00:00")
-        sys.exit(1)
-
-    # Collect CloudWatch logs
-    print(f"📋 Collecting logs from {args.log_group}...")
-    logs = collect_logs(args.log_group, start_time, end_time)
-    print(f"   Found {len(logs)} log events\n")
-
-    # Collect GitHub Actions deploy history
-    deploys = []
-    if args.repo:
-        print(f"🚀 Collecting deploy history from {args.repo}...")
-        deploys = collect_deploys(args.repo, start_time)
-        print(f"   Found {len(deploys)} recent deploys\n")
+    # ── Offline path: replay a JSON fixture (no AWS/GitHub creds needed) ──
+    if args.from_fixture:
+        print(f"📂 Loading fixture: {args.from_fixture}\n")
+        data = load_fixture(args.from_fixture)
+        start_time, end_time = times_from_fixture(data)
+        log_group = data["log_group"]
+        alert = data["alert"]
+        logs = logs_from_fixture(data)
+        deploys = deploys_from_fixture(data)
+        print(f"   {len(logs)} log events, {len(deploys)} deploys\n")
     else:
-        print("⚠️  No --repo provided, skipping deploy history\n")
+        # ── Live path: CloudWatch + GitHub Actions ──
+        missing = [f"--{f.replace('_', '-')}"
+                   for f in ("log_group", "start_time", "end_time", "alert")
+                   if not getattr(args, f)]
+        if missing:
+            print(f"❌ Live mode requires: {', '.join(missing)}")
+            print("   (or use --from-fixture <file> for offline mode)")
+            sys.exit(1)
 
-    # Build context object
+        try:
+            start_time = datetime.fromisoformat(args.start_time)
+            end_time = datetime.fromisoformat(args.end_time)
+        except ValueError as e:
+            print(f"❌ Invalid timestamp format: {e}")
+            print("   Use ISO 8601 format: 2026-04-08T02:00:00")
+            sys.exit(1)
+
+        log_group = args.log_group
+        alert = args.alert
+
+        print(f"📋 Collecting logs from {log_group}...")
+        logs = collect_logs(log_group, start_time, end_time)
+        print(f"   Found {len(logs)} log events\n")
+
+        deploys = []
+        if args.repo:
+            print(f"🚀 Collecting deploy history from {args.repo}...")
+            deploys = collect_deploys(args.repo, start_time)
+            print(f"   Found {len(deploys)} recent deploys\n")
+        else:
+            print("⚠️  No --repo provided, skipping deploy history\n")
+
+    # Build context object (identical downstream regardless of source)
     context = build_context(
-        log_group=args.log_group,
+        log_group=log_group,
         start_time=start_time,
         end_time=end_time,
-        alert=args.alert,
+        alert=alert,
         logs=logs,
         deploys=deploys
     )
