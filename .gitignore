@@ -14,3 +14,4 @@ rca_*.md
 .venv/
 __pycache__/
 *.pyc
+eval/results/

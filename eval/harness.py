@@ -30,6 +30,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from src.sources import (
@@ -38,6 +39,7 @@ from src.sources import (
 from src.collector import build_context
 
 FIXTURES_DIR = Path("fixtures")
+RESULTS_DIR = Path("eval/results")
 
 
 # ── tokenization + scoring helpers ──────────────────────────────
@@ -55,73 +57,87 @@ def _tokens(text: str) -> set[str]:
     return {w for w in words if len(w) > 2 and w not in _STOP}
 
 
-def score_cause_hit(draft: str, seeded_cause: str, threshold: float = 0.35) -> tuple[bool, float]:
+def _draft_text(draft, *fields) -> str:
     """
-    Fraction of the seeded-cause's meaningful tokens that appear in the draft.
-    Above threshold = the draft named the real cause. Crude but honest, and
-    tunable — the point is a consistent yardstick, not NLP perfection.
+    Pull specific fields from a structured (dict) draft and join them. If the
+    draft is a plain string (e.g. --no-llm control), return it as-is. This is
+    what lets us score CAUSAL fields (root_cause) rather than the whole
+    serialized blob — the v1 bug was scoring json.dumps(draft), where every
+    JSON key ("severity", "summary") looked like a quoted evidence claim and
+    every timeline mention of a commit looked like a false blame.
+    """
+    if not isinstance(draft, dict):
+        return str(draft)
+    parts = []
+    for f in fields:
+        v = draft.get(f, "")
+        if isinstance(v, list):
+            v = " ".join(json.dumps(x) if isinstance(x, (dict, list)) else str(x) for x in v)
+        parts.append(str(v))
+    return " ".join(parts)
+
+
+def score_cause_hit(draft, seeded_cause: str, threshold: float = 0.35) -> tuple[bool, float]:
+    """
+    Fraction of the seeded-cause's meaningful tokens present in the draft's
+    causal fields (root_cause / summary / trigger / title) — not the whole
+    document, so cause tokens that only show up in an unrelated action item
+    don't inflate the score.
     """
     seed = _tokens(seeded_cause)
     if not seed:
         return False, 0.0
-    hit = seed & _tokens(draft)
+    text = _draft_text(draft, "root_cause", "summary", "trigger", "title")
+    hit = seed & _tokens(text)
     ratio = len(hit) / len(seed)
     return ratio >= threshold, round(ratio, 3)
 
 
-def score_false_blame(draft: str, innocent_commits: list[str], deploy_caused: bool) -> tuple[bool, list[str]]:
+def score_false_blame(draft, innocent_commits: list[str]) -> tuple[bool, list[str]]:
     """
-    Returns (false_blame_occurred, offending_refs).
-    - Any innocent commit SHA quoted in the draft's root-cause framing = bad.
-    - On a no-deploy incident (deploy_caused=False), mentioning ANY deploy SHA
-      as causal is the trap we care about most.
+    False blame = an innocent commit named in the draft's ROOT_CAUSE — the
+    model's committed answer. Mentions elsewhere are legitimate: listing a
+    deploy in the timeline, naming the rollback target, or explicitly ruling a
+    deploy out in a low-confidence hypothesis are all correct behavior, not
+    blame. For a no-deploy incident (cert expiry), innocent_commits contains
+    every deploy, so ANY deploy SHA appearing in root_cause trips it — exactly
+    the "don't reflexively blame the nearest commit" trap.
     """
-    low = draft.lower()
-    offenders = [c for c in innocent_commits if c.lower() in low]
+    rc = _draft_text(draft, "root_cause").lower()
+    offenders = [c for c in innocent_commits if c.lower() in rc]
     return (len(offenders) > 0), offenders
 
 
-def verify_citations(draft: str, context: dict) -> tuple[bool, list[str]]:
+def verify_citations(draft, context: dict) -> tuple[bool, list[str]]:
     """
-    Grounding check. Pulls quoted spans out of the draft and confirms each
-    traces to something actually in the collected input — a log message or a
-    commit SHA. Unverifiable quotes are hallucination candidates.
+    Grounding check, structured-output edition. Every commit-SHA-shaped token
+    the draft references (anywhere) must be a real deploy from the collected
+    input — a model that invents commit a1b2dead is hallucinating evidence.
+    This is the verify-story-ids.mjs philosophy ported to RCA: no claim citing
+    a source that doesn't exist.
 
-    This is verify-story-ids.mjs's philosophy applied to RCA: a claim that
-    cites a source that doesn't exist is worse than no citation. We only judge
-    QUOTED material (backticks or double quotes) — prose paraphrase is fair
-    game, fabricated evidence is not.
+    Scoped to SHAs deliberately: it's the clean, false-positive-free grounding
+    signal for structured JSON. (Prose log-line verification was the v1
+    approach — it drowned in JSON keys. Log-content grounding is future work.)
 
-    Returns (all_verified, unverifiable_quotes).
+    Returns (all_grounded, invented_shas).
     """
-    log_corpus = " ".join(e["message"].lower() for e in context.get("all_logs", []))
-    shas = {d.get("commit", "").lower() for d in context.get("deploys", [])}
-    shas.discard("")
+    known = {d.get("commit", "").lower()[:8] for d in context.get("deploys", [])}
+    known.discard("")
 
-    # quoted spans: `backtick` or "double-quoted", length-filtered to skip
-    # trivial one-word quotes that aren't really evidence claims
-    quotes = re.findall(r"`([^`]{6,})`|\"([^\"]{6,})\"", draft)
-    flat = [q[0] or q[1] for q in quotes]
+    full = _draft_text(
+        draft, "title", "summary", "root_cause", "trigger", "deploy_correlation",
+        "impact", "timeline", "contributing_factors", "action_items", "hypotheses",
+    ).lower()
 
-    unverifiable = []
-    for q in flat:
-        ql = q.lower().strip()
-        # a commit sha reference verifies against the deploy set
-        if re.fullmatch(r"[0-9a-f]{6,40}", ql):
-            if ql[:8] not in {s[:8] for s in shas}:
-                unverifiable.append(q)
-            continue
-        # otherwise it should be a substring of some real log line. Compare on
-        # a token-overlap basis so minor reformatting (timestamps stripped,
-        # whitespace) doesn't cause false alarms, but invented lines do.
-        qt = _tokens(ql)
-        if not qt:
-            continue
-        overlap = len(qt & set(re.findall(r"[a-z0-9_]+", log_corpus))) / len(qt)
-        if overlap < 0.7:
-            unverifiable.append(q)
-
-    return (len(unverifiable) == 0), unverifiable
+    # commit-SHA-shaped: 7-40 hex chars with at least one hex letter, so pure
+    # digit runs (timestamps, "512", "8000") and years don't match
+    candidates = {
+        s for s in re.findall(r"\b[0-9a-f]{7,40}\b", full)
+        if any(c in "abcdef" for c in s)
+    }
+    invented = sorted(s for s in candidates if s[:8] not in known)
+    return (len(invented) == 0), invented
 
 
 # ── runner ──────────────────────────────────────────────────────
@@ -137,22 +153,36 @@ def run_one(fixture_path: Path, use_llm: bool) -> dict:
 
     seeded = data.get("seeded_cause", "")
     innocent = data.get("innocent_deploys", [])
-    deploy_caused = "not a code change" not in seeded.lower() and "no deploy" not in seeded.lower()
 
     if use_llm:
         from src.generator import generate_rca
-        draft = generate_rca(context)
-        if isinstance(draft, dict):
-            draft = json.dumps(draft)
+        draft = generate_rca(context)  # dict — scored field-aware, NOT stringified
     else:
-        # plumbing check: feed the seeded cause back as a fake "perfect" draft
-        # so scoring/citation logic can be exercised without spending tokens
+        # plumbing check: a minimal structured draft so scorers run token-free
         sample_log = context["all_logs"][1]["message"] if len(context["all_logs"]) > 1 else ""
-        draft = f"Root cause: {seeded}\nEvidence: `{sample_log}`"
+        draft = {"root_cause": seeded, "summary": seeded, "trigger": sample_log}
 
     cause_hit, cause_ratio = score_cause_hit(draft, seeded)
-    false_blame, offenders = score_false_blame(draft, innocent, deploy_caused)
+    false_blame, offenders = score_false_blame(draft, innocent)
     cite_ok, bad_cites = verify_citations(draft, context)
+
+    # persist the raw draft alongside its scores — audit trail, and lets you
+    # inspect *why* a score landed without burning API credits to re-run.
+    # Timestamped filename so repeated runs ACCUMULATE (n grows over multiple
+    # days) instead of each run clobbering the last one.
+    if use_llm:
+        RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+        record = {
+            "fixture": fixture_path.stem, "run_at": stamp, "seeded_cause": seeded,
+            "innocent_deploys": innocent, "draft": draft,
+            "scores": {
+                "cause_hit": cause_hit, "cause_ratio": cause_ratio,
+                "false_blame": false_blame, "offenders": offenders,
+                "citations_ok": cite_ok, "bad_citations": bad_cites,
+            },
+        }
+        (RESULTS_DIR / f"{fixture_path.stem}-{stamp}.json").write_text(json.dumps(record, indent=2))
 
     return {
         "fixture": fixture_path.stem,
@@ -162,11 +192,50 @@ def run_one(fixture_path: Path, use_llm: bool) -> dict:
     }
 
 
+def print_cumulative_summary() -> None:
+    """
+    Aggregate EVERY persisted run in eval/results/ — not just this session's —
+    so the README number reflects accumulated evidence across however many
+    times you've run the harness, not a single lucky (or unlucky) pass.
+    """
+    records = [json.loads(p.read_text()) for p in sorted(RESULTS_DIR.glob("*.json"))]
+    if not records:
+        print("\nNo persisted runs yet in eval/results/.")
+        return
+
+    n = len(records)
+    by_fixture: dict[str, list[dict]] = {}
+    for r in records:
+        by_fixture.setdefault(r["fixture"], []).append(r)
+
+    hits = sum(r["scores"]["cause_hit"] for r in records)
+    clean = sum(not r["scores"]["false_blame"] for r in records)
+    grounded = sum(r["scores"]["citations_ok"] for r in records)
+
+    print(f"\n{'='*62}\nCUMULATIVE (all persisted runs, n={n})\n{'='*62}")
+    for fx, runs in sorted(by_fixture.items()):
+        fh = sum(r["scores"]["cause_hit"] for r in runs)
+        fc = sum(not r["scores"]["false_blame"] for r in runs)
+        fg = sum(r["scores"]["citations_ok"] for r in runs)
+        m = len(runs)
+        print(f"  {fx:<22} cause {fh}/{m}   clean {fc}/{m}   grounded {fg}/{m}")
+    print("─" * 62)
+    print(f"  cause identified:   {hits}/{n}  ({100*hits/n:.0f}%)")
+    print(f"  no false blame:     {clean}/{n}  ({100*clean/n:.0f}%)")
+    print(f"  fully grounded:     {grounded}/{n}  ({100*grounded/n:.0f}%)")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="logmortem RCA eval harness")
     ap.add_argument("--fixture", help="run a single fixture by filename")
     ap.add_argument("--no-llm", action="store_true", help="skip Claude, exercise scoring plumbing only")
+    ap.add_argument("--summary", action="store_true",
+                     help="skip running; just print cumulative stats from eval/results/")
     args = ap.parse_args()
+
+    if args.summary:
+        print_cumulative_summary()
+        return 0
 
     if args.fixture:
         paths = [FIXTURES_DIR / args.fixture]
@@ -200,7 +269,7 @@ def main() -> int:
         if r["offenders"]:
             print(f"  ⚠ {r['fixture']}: falsely implicated {r['offenders']}")
         if r["bad_citations"]:
-            print(f"  ⚠ {r['fixture']}: unverifiable quotes {r['bad_citations'][:3]}")
+            print(f"  ⚠ {r['fixture']}: invented commit refs {r['bad_citations'][:3]}")
 
     return 0
 
