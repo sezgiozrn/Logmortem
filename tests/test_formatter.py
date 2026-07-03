@@ -75,7 +75,7 @@ def test_format_markdown_contains_deploy_correlation():
 
 def test_format_markdown_contains_footer():
     md = format_markdown(MOCK_RCA, MOCK_CONTEXT)
-    assert "postmortem-pilot" in md
+    assert "logmortem" in md
 
 
 def test_format_markdown_no_hypotheses_section_when_empty():
