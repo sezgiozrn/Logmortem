@@ -1,6 +1,6 @@
-# Autopsy
+# Logmortem
 
-Writing RCAs manually after a 2-hour incident — digging through logs, reconstructing timelines, correlating deploys — is slow, tedious, and happens when you're already exhausted. autopsy does the first draft so engineers can focus on validating and improving it instead of building it from scratch at 3am.
+Writing RCAs manually after a 2-hour incident — digging through logs, reconstructing timelines, correlating deploys — is slow, tedious, and happens when you're already exhausted. logmortem does the first draft so engineers can focus on validating and improving it instead of building it from scratch at 3am.
 
 Feed it a CloudWatch log group, a time window, and the alert that fired. It pulls the logs, correlates recent GitHub Actions deploys, and outputs a structured postmortem in under a minute.
 
@@ -43,9 +43,28 @@ but used the wrong config key.
 4. Sends everything to Claude with a structured RCA prompt
 5. Outputs a markdown postmortem with timeline, root cause, deploy correlation, contributing factors, and action items
 
+---
+
+## Limitations & what I'd do differently
+
+- **Correlation is temporal, not causal.** A deploy 30 minutes before an
+  incident gets flagged; Claude decides if it's relevant. It's a draft for
+  a human to validate, not a verdict — and it will occasionally be
+  confidently wrong.
+- **Logs only.** No CloudWatch Metrics or traces. Root causes that live in
+  a latency graph rather than a log line get missed.
+- **GitHub Actions only** for deploy history. Other CD systems are invisible.
+- **Large incident windows can exceed the context budget.** Noisy log groups
+  over long windows get truncated, not summarized.
+- If I rebuilt it: pluggable log sources, chunked ingestion with
+  pre-summarization instead of truncation, and an eval harness that scores
+  RCA drafts against known-cause incidents instead of trusting vibes.
+
+---
+
 ## Automated trigger
 
-autopsy can run automatically when a deploy fails. Add `.github/workflows/auto-rca.yml`
+logmortem can run automatically when a deploy fails. Add `.github/workflows/auto-rca.yml`
 to your repo and set these secrets:
 
 | Secret | Required | Description |
@@ -56,7 +75,7 @@ to your repo and set these secrets:
 | `AWS_DEFAULT_REGION` | No | Defaults to us-east-1 |
 | `LOG_GROUP` | No | CloudWatch log group to query |
 
-When any workflow fails, autopsy automatically generates an RCA and posts it
+When any workflow fails, logmortem automatically generates an RCA and posts it
 to the GitHub Actions job summary — visible directly in the failed run.
 
 ---
@@ -102,8 +121,8 @@ python src/main.py \
 ## Setup
 
 ```bash
-git clone https://github.com/Sage-Canty/autopsy
-cd autopsy
+git clone https://github.com/sezgiozrn/Logmortem.git
+cd Logmortem
 pip install -r requirements.txt
 ```
 
@@ -136,4 +155,4 @@ pytest tests/ -v --cov=src --cov-report=term-missing
 
 ## Related
 
-The runbooks and postmortem templates that informed this tool live in [Platform-Runbooks](https://github.com/Sage-Canty/Platform-Runbooks) — severity levels, escalation paths, and triage steps for AWS/ECS incidents.
+The runbooks and postmortem templates that informed this tool live in [Platform-Runbooks](https://github.com/sezgiozrn/Platform-Runbooks) — severity levels, escalation paths, and triage steps for AWS/ECS incidents.
