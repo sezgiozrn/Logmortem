@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-postmortem-pilot — AI-powered RCA generator for AWS incidents.
+logmortem — AI-powered RCA generator for AWS incidents.
 Ingests CloudWatch logs, GitHub Actions deploy history, and alert context,
 then uses Claude to draft a structured postmortem.
 """
@@ -18,7 +18,7 @@ from src.formatter import format_markdown, print_summary
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        prog="postmortem-pilot",
+        prog="logmortem",
         description="Generate RCA drafts from AWS incident data using Claude API"
     )
     parser.add_argument(
@@ -70,7 +70,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    print("\n🔍 postmortem-pilot starting...\n")
+    print("\n🔍 logmortem starting...\n")
 
     # ── Offline path: replay a JSON fixture (no AWS/GitHub creds needed) ──
     if args.from_fixture:
