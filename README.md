@@ -79,15 +79,15 @@ generation pipeline and scores each draft on three axes:
 | no false blame | did it avoid pinning an innocent deploy in its root-cause? |
 | fully grounded | is every commit SHA it cites a real deploy from the input? |
 
-Current numbers — 16 runs (4 fixtures × 4 passes, claude-sonnet-5, July 3–4 2026):
+Current numbers — 20 runs (4 fixtures × 5 passes, claude-sonnet-5, July 3–6 2026):
 
 ```
-cause identified:   16/16  (100%)
-no false blame:     16/16  (100%)
-fully grounded:     16/16  (100%)
+cause identified:   20/20  (100%)
+no false blame:     20/20  (100%)
+fully grounded:     20/20  (100%)
 ```
 
-**Honest scope:** n=16 on 4 synthetic fixtures is a smoke test, not a
+**Honest scope:** n=20 on 4 synthetic fixtures is a smoke test, not a
 benchmark. The fixtures are clean by design; real incident logs are noisier,
 and a perfect score here does not promise one there.
 
