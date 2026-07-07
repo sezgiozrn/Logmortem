@@ -105,12 +105,19 @@ def generate_rca(context: dict) -> dict:
 
     response = client.messages.create(
         model="claude-sonnet-5",
-        max_tokens=2000,
+        max_tokens=4000,  # shared by adaptive thinking + output; keep room for full JSON
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
     )
 
-    raw = response.content[0].text.strip()
+    # Sonnet 5+ runs adaptive thinking by default, so content[0] may be a
+    # ThinkingBlock — grab the actual text block(s), not blindly the first.
+    raw = "".join(
+        b.text for b in response.content if getattr(b, "type", None) == "text"
+    ).strip()
+    if not raw:
+        raise RuntimeError("No text block in response (got only: "
+                           + ", ".join(getattr(b, "type", "?") for b in response.content) + ")")
 
     # Strip markdown fences if model adds them despite instructions
     if raw.startswith("```"):
@@ -121,8 +128,16 @@ def generate_rca(context: dict) -> dict:
 
     try:
         return json.loads(raw)
-    except json.JSONDecodeError as e:
-        print(f"⚠️  Claude returned invalid JSON: {e}")
-        print("Raw response:")
-        print(raw)
-        raise
+    except json.JSONDecodeError:
+        # Models occasionally emit near-valid JSON (a stray ';', a trailing
+        # comma, an unescaped quote). One bad char shouldn't nuke an otherwise
+        # sound RCA, so repair and retry. The airtight fix is the API's
+        # structured-outputs mode; this is the pragmatic fallback.
+        from json_repair import repair_json
+        try:
+            return json.loads(repair_json(raw))
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"⚠️  Claude returned unrepairable JSON: {e}")
+            print("Raw response:")
+            print(raw)
+            raise
