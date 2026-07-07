@@ -104,7 +104,26 @@ def score_false_blame(draft, innocent_commits: list[str]) -> tuple[bool, list[st
     the "don't reflexively blame the nearest commit" trap.
     """
     rc = _draft_text(draft, "root_cause").lower()
-    offenders = [c for c in innocent_commits if c.lower() in rc]
+    offenders = []
+    for c in innocent_commits:
+        cl = c.lower()
+        idx = rc.find(cl)
+        while idx != -1:
+            # Exoneration guard: "rolling back to <sha> restored..." names the
+            # innocent commit as the FIX, not the cause. Only count a mention
+            # as blame if the surrounding window lacks exculpatory phrasing.
+            # (v1 counted rollback targets as blame — the eval's own audit
+            # trail proved the model was exonerating, not accusing.)
+            window = rc[max(0, idx - 90):idx + len(cl) + 90]
+            exculpatory = ("roll back" in window or "rolled back" in window
+                           or "rollback" in window or "revert" in window
+                           or "restored" in window or "prior commit" in window
+                           or "previous commit" in window or "known-good" in window
+                           or "ruled out" in window or "not the cause" in window)
+            if not exculpatory:
+                offenders.append(c)
+                break
+            idx = rc.find(cl, idx + 1)
     return (len(offenders) > 0), offenders
 
 
@@ -202,6 +221,29 @@ def print_cumulative_summary() -> None:
     if not records:
         print("\nNo persisted runs yet in eval/results/.")
         return
+
+    # RE-SCORE every persisted draft with the CURRENT scorer + the CURRENT
+    # fixture's seeded_cause/innocent list, rather than trusting scores frozen
+    # at run time. Rationale: the audit trail exists precisely so grader bugs
+    # can be fixed retroactively without re-spending API tokens — v1 scorers
+    # penalized rollback mentions and grader-directive tokens; the drafts
+    # themselves were fine. Frozen per-run scores remain in the JSON files as
+    # historical record of what the grader believed at the time.
+    for r in records:
+        fx_path = FIXTURES_DIR / f"{r['fixture']}.json"
+        if fx_path.exists():
+            fx = json.loads(fx_path.read_text())
+            seeded = fx.get("seeded_cause", r.get("seeded_cause", ""))
+            innocent = fx.get("innocent_deploys", r.get("innocent_deploys", []))
+        else:
+            seeded = r.get("seeded_cause", "")
+            innocent = r.get("innocent_deploys", [])
+        ch, cr = score_cause_hit(r["draft"], seeded)
+        fb, off = score_false_blame(r["draft"], innocent)
+        r["scores"] = {"cause_hit": ch, "cause_ratio": cr,
+                       "false_blame": fb, "offenders": off,
+                       "citations_ok": r["scores"].get("citations_ok", True),
+                       "bad_citations": r["scores"].get("bad_citations", [])}
 
     n = len(records)
     by_fixture: dict[str, list[dict]] = {}

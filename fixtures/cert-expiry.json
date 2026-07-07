@@ -3,7 +3,8 @@
   "start_time": "2026-06-20T12:00:00",
   "end_time": "2026-06-20T12:40:00",
   "alert": "TLS handshake failures from upstream clients, traffic dropping",
-  "seeded_cause": "The api-edge TLS certificate expired at 12:00 UTC. No deploy involved — this is a time-triggered failure, NOT a code change. Correct answer must NOT blame either deploy.",
+  "seeded_cause": "The api-edge TLS certificate expired at 12:00 UTC (notAfter reached, 365-day cert). The cert-manager auto-renew job had been disabled since 2026-01, so no renewal happened. Time-triggered expiry, not caused by any deploy or code change.",
+  "grader_notes": "No deploy involved. Correct answer must NOT blame either deploy — both commits listed are innocent bait. This field is NOT scored; only seeded_cause tokens are.",
   "innocent_deploys": ["ab12ab12", "cd34cd34"],
   "deploys": [
     {
