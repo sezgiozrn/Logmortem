@@ -1,12 +1,12 @@
 # Logmortem
 
-Writing RCAs manually after a 2-hour incident — digging through logs, reconstructing timelines, correlating deploys — is slow, tedious, and happens when you're already exhausted. logmortem does the first draft so engineers can focus on validating and improving it instead of building it from scratch at 3am.
+Take a pile of messy, timestamped operational data from multiple sources, correlate events across them, and produce a structured, decision-ready draft that a human can validate fast — then measure whether that draft can actually be trusted. That's the pattern this tool is built around. The domain it's built in happens to be engineering incidents (root-cause analysis), but the shape — ingest scattered records → correlate → draft → **verify against acceptance criteria** — is the same one that shows up in any operational analysis.
 
-Feed it a CloudWatch log group, a time window, and the alert that fired. It pulls the logs, correlates recent GitHub Actions deploys, and outputs a structured postmortem in under a minute.
+Concretely: writing incident post-mortems by hand — digging through logs, reconstructing timelines, correlating deploys — is slow and happens when you're already exhausted. Logmortem does the first draft so a human validates and refines instead of building from scratch at 3am. Feed it a log source, a time window, and the alert that fired; it pulls the records, correlates recent deploys, and outputs a structured post-mortem in under a minute — and ships with an eval harness that grades those drafts against explicit pass/fail criteria (see [Eval results](#eval-results)) so the output is measured, not assumed.
 
 ![demo](demo.gif)
 
-*Real execution, `--from-fixture --dry-run` — no live AWS/GitHub needed. Shows the actual collected context (logs + deploy correlation) before Claude is called.*
+*Real execution, `--from-fixture --dry-run` — no live AWS/GitHub needed. Shows the actual collected context (records + deploy correlation) before Claude is called.*
 
 ---
 
