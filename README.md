@@ -4,6 +4,10 @@ Writing RCAs manually after a 2-hour incident — digging through logs, reconstr
 
 Feed it a CloudWatch log group, a time window, and the alert that fired. It pulls the logs, correlates recent GitHub Actions deploys, and outputs a structured postmortem in under a minute.
 
+![demo](demo.gif)
+
+*Real execution, `--from-fixture --dry-run` — no live AWS/GitHub needed. Shows the actual collected context (logs + deploy correlation) before Claude is called.*
+
 ---
 
 ## Example output
