@@ -16,7 +16,7 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout autopsy
+      - name: Checkout logmortem
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -57,7 +57,7 @@ jobs:
       - name: Post RCA to job summary
         if: always()
         run: |
-          echo "## 🔍 autopsy — Auto-generated RCA" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔍 logmortem — Auto-generated RCA" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Triggered by:** \`${{ github.event.workflow_run.name }}\` run #${{ github.event.workflow_run.run_number }}" >> $GITHUB_STEP_SUMMARY
           echo "**Failed at:** ${{ github.event.workflow_run.run_started_at }}" >> $GITHUB_STEP_SUMMARY
