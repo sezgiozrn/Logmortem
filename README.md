@@ -49,16 +49,62 @@ but used the wrong config key.
 
 - **Correlation is temporal, not causal.** A deploy 30 minutes before an
   incident gets flagged; Claude decides if it's relevant. It's a draft for
-  a human to validate, not a verdict — and it will occasionally be
-  confidently wrong.
+  a human to validate, not a verdict — and it can be confidently wrong.
+  That risk is now measured instead of hand-waved: see
+  [Eval results](#eval-results) below.
 - **Logs only.** No CloudWatch Metrics or traces. Root causes that live in
   a latency graph rather than a log line get missed.
 - **GitHub Actions only** for deploy history. Other CD systems are invisible.
 - **Large incident windows can exceed the context budget.** Noisy log groups
   over long windows get truncated, not summarized.
-- If I rebuilt it: pluggable log sources, chunked ingestion with
-  pre-summarization instead of truncation, and an eval harness that scores
-  RCA drafts against known-cause incidents instead of trusting vibes.
+- Still on the rebuild list: more log sources beyond the offline fixture
+  reader, and chunked ingestion with pre-summarization instead of truncation.
+  The eval harness from the original wishlist is built — see below.
+
+---
+
+## Eval results
+
+`eval/harness.py` replays seeded incident fixtures (root cause known by
+construction, plus deliberately innocent deploys as bait) through the real
+generation pipeline and scores each draft on three axes:
+
+| axis | question it answers |
+|---|---|
+| cause identified | did the draft name the seeded root cause? |
+| no false blame | did it avoid pinning an innocent deploy in its root-cause? |
+| fully grounded | is every commit SHA it cites a real deploy from the input? |
+
+Current numbers — 16 runs (4 fixtures × 4 passes, claude-sonnet-5, July 3–4 2026):
+
+```
+cause identified:   16/16  (100%)
+no false blame:     16/16  (100%)
+fully grounded:     16/16  (100%)
+```
+
+**Honest scope:** n=16 on 4 synthetic fixtures is a smoke test, not a
+benchmark. The fixtures are clean by design; real incident logs are noisier,
+and a perfect score here does not promise one there.
+
+**What the eval actually caught:** the first scoring pass reported 81% cause /
+88% no-false-blame. Reading the persisted drafts (every run is saved to
+`eval/results/` with its full output) showed both deficits were **grader bugs,
+not model failures** — the cert-expiry fixture had grader directives polluting
+its scored answer text, and the blame-checker was counting "rolled back to
+<commit>" (an exoneration) as an accusation. The drafts were right; the
+grader was wrong. The current false-blame check uses an exculpatory-phrasing
+window that is still a heuristic and can over-forgive in edge cases — flagged
+here rather than hidden.
+
+Reproduce it (costs a few cents in API calls):
+
+```bash
+export ANTHROPIC_API_KEY=your_key
+.venv/bin/python3 -m eval.harness            # run all fixtures once
+.venv/bin/python3 -m eval.harness --summary  # cumulative stats across all saved runs
+.venv/bin/python3 -m eval.harness --no-llm   # free: exercises scoring plumbing only
+```
 
 ---
 
@@ -97,6 +143,9 @@ python src/main.py \
   --end-time 2026-04-08T03:00:00 \
   --alert "ECS TaskCount dropped below threshold" \
   --repo your-org/your-app
+
+# Offline — replay a seeded incident fixture, no AWS/GitHub creds needed
+python src/main.py --from-fixture fixtures/pool-exhaustion.json
 
 # Dry run — see what data was collected without calling Claude
 python src/main.py \
