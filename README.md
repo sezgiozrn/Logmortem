@@ -71,13 +71,14 @@ but used the wrong config key.
 
 `eval/harness.py` replays seeded incident fixtures (root cause known by
 construction, plus deliberately innocent deploys as bait) through the real
-generation pipeline and scores each draft on three axes:
+generation pipeline and grades each draft against three acceptance criteria —
+the pass/fail gates an RCA has to clear before a human should trust it:
 
-| axis | question it answers |
+| acceptance criterion | what it verifies |
 |---|---|
-| cause identified | did the draft name the seeded root cause? |
-| no false blame | did it avoid pinning an innocent deploy in its root-cause? |
-| fully grounded | is every commit SHA it cites a real deploy from the input? |
+| cause identified | the draft names the seeded root cause |
+| no false blame | it does not pin the incident on an innocent deploy |
+| fully grounded | every commit SHA it cites is a real deploy from the input |
 
 Current numbers — 20 runs (4 fixtures × 5 passes, claude-sonnet-5, July 3–6 2026):
 
@@ -91,15 +92,17 @@ fully grounded:     20/20  (100%)
 benchmark. The fixtures are clean by design; real incident logs are noisier,
 and a perfect score here does not promise one there.
 
-**What the eval actually caught:** the first scoring pass reported 81% cause /
-88% no-false-blame. Reading the persisted drafts (every run is saved to
-`eval/results/` with its full output) showed both deficits were **grader bugs,
-not model failures** — the cert-expiry fixture had grader directives polluting
-its scored answer text, and the blame-checker was counting "rolled back to
-<commit>" (an exoneration) as an accusation. The drafts were right; the
-grader was wrong. The current false-blame check uses an exculpatory-phrasing
-window that is still a heuristic and can over-forgive in edge cases — flagged
-here rather than hidden.
+**Validating the measurement instrument before trusting it:** the first
+scoring pass reported 81% cause / 88% no-false-blame. Reading the persisted
+drafts (every run is saved to `eval/results/` with its full output) showed both
+deficits were **grader bugs, not model failures** — the cert-expiry fixture had
+grader directives polluting its scored answer text, and the blame-checker was
+counting "rolled back to <commit>" (an exoneration) as an accusation. The
+drafts were right; the grader was wrong. Fixing the instrument, not the number,
+is the whole point — a green metric from a broken grader is worse than a red
+one. The current false-blame check uses an exculpatory-phrasing window that is
+still a heuristic and can over-forgive in edge cases — flagged here rather than
+hidden.
 
 Reproduce it (costs a few cents in API calls):
 
