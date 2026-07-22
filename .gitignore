@@ -14,5 +14,5 @@ rca_*.md
 .venv/
 __pycache__/
 *.pyc
-eval/results/
+eval/results/*
 !eval/results/injected-*.json
