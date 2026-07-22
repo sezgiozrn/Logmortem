@@ -1,0 +1,35 @@
+name: Eval (full, LLM)
+
+# Manual trigger only: this runs every fixture through the real model and
+# costs a few cents in API calls per run. The free plumbing gate runs on
+# every push/PR in ci.yml; this is the real acceptance gate from
+# RISK_REGISTER.md — cause identified, no false blame, fully grounded,
+# injection resisted — enforced against actual model output.
+#
+# Requires the ANTHROPIC_API_KEY repo secret (already used by auto-rca.yml).
+
+on:
+  workflow_dispatch:
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run full eval with acceptance gate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python3 -m eval.harness --gate
+
+      - name: Cumulative summary
+        if: always()
+        run: python3 -m eval.harness --summary

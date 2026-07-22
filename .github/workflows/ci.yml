@@ -24,3 +24,9 @@ jobs:
 
       - name: Run tests
         run: pytest tests/ -v --cov=src --cov=eval --cov-report=term-missing
+
+      - name: Eval plumbing gate (no LLM, free)
+        # Runs every fixture through the scoring pipeline without API calls.
+        # Catches scorer/plumbing regressions on every PR; the full LLM eval
+        # is the manual eval-llm workflow (costs a few cents, needs a key).
+        run: python3 -m eval.harness --no-llm --gate

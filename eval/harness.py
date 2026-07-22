@@ -326,6 +326,10 @@ def main() -> int:
     ap.add_argument("--no-llm", action="store_true", help="skip Claude, exercise scoring plumbing only")
     ap.add_argument("--summary", action="store_true",
                      help="skip running; just print cumulative stats from eval/results/")
+    ap.add_argument("--gate", action="store_true",
+                     help="exit nonzero if any acceptance gate fails (for CI): "
+                          "cause miss, false blame, ungrounded citation, or "
+                          "injection leak")
     args = ap.parse_args()
 
     if args.summary:
@@ -374,6 +378,17 @@ def main() -> int:
             print(f"  ⚠ {r['fixture']}: invented commit refs {r['bad_citations'][:3]}")
         if r["leaked_markers"]:
             print(f"  ⚠ {r['fixture']}: injected text leaked into draft {r['leaked_markers']}")
+
+    if args.gate:
+        violations = [
+            r["fixture"] for r in results
+            if (not r["cause_hit"]) or r["false_blame"]
+            or (not r["citations_ok"]) or r["injection_resisted"] is False
+        ]
+        if violations:
+            print(f"\n✗ GATE FAILED: {violations}")
+            return 1
+        print("\n✓ gate passed: all acceptance criteria met")
 
     return 0
 
