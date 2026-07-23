@@ -218,9 +218,3 @@ pytest tests/ -v --cov=src --cov-report=term-missing
 - **boto3** — CloudWatch Logs
 - **GitHub REST API** — Actions workflow history
 - **Claude API** — RCA synthesis
-
----
-
-## Related
-
-The runbooks and postmortem templates that informed this tool live in [Platform-Runbooks](https://github.com/sezgiozrn/Platform-Runbooks) — severity levels, escalation paths, and triage steps for AWS/ECS incidents.
